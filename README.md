@@ -81,6 +81,16 @@ resolver is implemented:
   (inline JSON) or `LOCO_SERVERS_FILE` (a JSON/YAML file, either a bare list or
   `{ servers: [...] }`). Each entry has a `name`, a `baseUrl` (or `url`),
   optional `tags`, and an optional `metricsPath`.
+- **KubernetesResolver** — discovers Loco pods via the Kubernetes API. Active
+  when `K8S_LABEL_SELECTOR` is set; it lists Running pods matching the selector
+  in a namespace and turns each pod IP into a server (`K8S_SCHEME://podIP:port`,
+  where the port is `K8S_PORT` or the pod's `containerPort`). In-cluster it uses
+  the mounted service-account token, CA and namespace by default; all of that is
+  overridable for out-of-cluster use (see `.env.example`).
+
+Resolvers compose: if both are configured their servers are merged. A resolver
+that fails at runtime (e.g. the Kubernetes API is unreachable) is isolated — its
+error is shown on the page and the other resolvers' servers still render.
 
 For every resolved server the collector probes Loco's built-in health endpoints
 — `/_ping`, `/_health`, `/_readiness` — recording status and latency, and
@@ -98,10 +108,13 @@ browsable metric families. (Loco has no metrics endpoint out of the box, so
 ]
 ```
 
-Adding a new resolver later means implementing the `ServerResolver` interface
+Adding another resolver means implementing the `ServerResolver` interface
 (`app/lib/servers/types.ts`) and registering it in
 `app/lib/servers/registry.server.ts` — the metrics collector and UI need no
-changes.
+changes. `KubernetesResolver` is a worked example of a dynamic resolver.
+
+The Overview page shows a **Fleet** tile summarising up / degraded / down across
+all resolved servers (health probes only, so it stays fast).
 
 ## Local development against a throwaway database
 

@@ -5,6 +5,8 @@ import {
   getStatusCounts,
 } from "~/lib/jobs.server";
 import { loadSchedulerConfig } from "~/lib/scheduler.server";
+import { resolveServers } from "~/lib/servers/registry.server";
+import { metricsTimeoutMs, probeAll } from "~/lib/metrics/collect.server";
 import { targetLabel } from "~/lib/env.server";
 import {
   Alert,
@@ -12,6 +14,7 @@ import {
   CardHeader,
   StatTile,
   buttonClass,
+  cn,
 } from "~/components/ui";
 import {
   JOB_STATUSES,
@@ -24,12 +27,34 @@ export function meta(_: Route.MetaArgs) {
   return [{ title: "Overview · loco-admin" }];
 }
 
+/** Resilient fleet health for the Overview tile — never throws. */
+async function overviewFleet() {
+  try {
+    const { servers, resolvers } = await resolveServers();
+    if (resolvers.length === 0) {
+      return { configured: false, total: 0, up: 0, degraded: 0, down: 0 };
+    }
+    // Keep the dashboard snappy even if a server is unreachable.
+    const members = await probeAll(servers, Math.min(metricsTimeoutMs(), 2500));
+    return {
+      configured: true,
+      total: servers.length,
+      up: members.filter((m) => m.status === "up").length,
+      degraded: members.filter((m) => m.status === "degraded").length,
+      down: members.filter((m) => m.status === "down").length,
+    };
+  } catch {
+    return { configured: false, total: 0, up: 0, degraded: 0, down: 0 };
+  }
+}
+
 export async function loader(_: Route.LoaderArgs) {
   const now = new Date();
-  const [counts, throughput, scheduler] = await Promise.all([
+  const [counts, throughput, scheduler, fleet] = await Promise.all([
     getStatusCounts(),
     getRecentThroughput(),
     loadSchedulerConfig(now),
+    overviewFleet(),
   ]);
 
   // Roll the sparse hourly data into a dense 24-slot series on the server so the
@@ -62,13 +87,14 @@ export async function loader(_: Route.LoaderArgs) {
           }
         : null,
     },
+    fleet,
     target: targetLabel(),
     generatedAt: now,
   };
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { counts, buckets, scheduler, target, generatedAt } = loaderData;
+  const { counts, buckets, scheduler, fleet, target, generatedAt } = loaderData;
 
   return (
     <div className="space-y-6">
@@ -129,7 +155,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           </div>
         </Card>
 
-        <Card>
+        <div className="space-y-6">
+          {fleet.configured ? <FleetCard fleet={fleet} /> : null}
+          <Card>
           <CardHeader title="Scheduler" subtitle="From scheduler.yaml" />
           <div className="space-y-4 p-4">
             {scheduler.exists ? (
@@ -167,9 +195,66 @@ export default function Home({ loaderData }: Route.ComponentProps) {
               </Alert>
             )}
           </div>
-        </Card>
+          </Card>
+        </div>
       </div>
     </div>
+  );
+}
+
+function FleetCard({
+  fleet,
+}: {
+  fleet: { total: number; up: number; degraded: number; down: number };
+}) {
+  const rows: { label: string; value: number; dot: string }[] = [
+    { label: "Up", value: fleet.up, dot: "bg-emerald-500" },
+    { label: "Degraded", value: fleet.degraded, dot: "bg-amber-500" },
+    { label: "Down", value: fleet.down, dot: "bg-rose-500" },
+  ];
+  return (
+    <Card>
+      <CardHeader
+        title="Fleet"
+        subtitle="Loco servers"
+        actions={
+          <Link
+            to="/servers"
+            className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300"
+          >
+            View
+          </Link>
+        }
+      />
+      <div className="p-4">
+        <div className="flex items-end justify-between">
+          <span className="text-2xl font-semibold tabular text-slate-900 dark:text-slate-50">
+            {formatNumber(fleet.total)}
+          </span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            server{fleet.total === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {rows.map((r) => (
+            <div
+              key={r.label}
+              className="rounded-lg bg-slate-50 px-2 py-1.5 text-center dark:bg-slate-800/60"
+            >
+              <div className="flex items-center justify-center gap-1.5">
+                <span className={cn("h-1.5 w-1.5 rounded-full", r.dot)} />
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {r.label}
+                </span>
+              </div>
+              <div className="tabular mt-0.5 text-lg font-semibold text-slate-800 dark:text-slate-100">
+                {formatNumber(r.value)}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
   );
 }
 

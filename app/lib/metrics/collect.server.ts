@@ -159,24 +159,64 @@ function deriveStatus(probes: ProbeResult[]): ServerStatus {
   return dependencyFailing ? "degraded" : "up";
 }
 
+interface ProbeSummary {
+  status: ServerStatus;
+  latencyMs: number | null;
+  probes: ProbeResult[];
+}
+
+/** Run the health probes for a server (no metrics scrape). */
+export async function probeServer(
+  server: LocoServer,
+  timeoutMs: number,
+): Promise<ProbeSummary> {
+  const probes = await Promise.all(
+    PROBES.map((p) => runProbe(server, p, timeoutMs)),
+  );
+  return {
+    status: deriveStatus(probes),
+    latencyMs: probes.find((p) => p.key === "ping")?.latencyMs ?? null,
+    probes,
+  };
+}
+
 /** Collect health probes and optional metrics for a single server. */
 export async function collectServerMetrics(
   server: LocoServer,
   timeoutMs: number,
 ): Promise<ServerMetrics> {
-  const [probes, prometheus] = await Promise.all([
-    Promise.all(PROBES.map((p) => runProbe(server, p, timeoutMs))),
+  const [probe, prometheus] = await Promise.all([
+    probeServer(server, timeoutMs),
     scrapePrometheus(server, timeoutMs),
   ]);
 
   return {
     server,
-    status: deriveStatus(probes),
-    latencyMs: probes.find((p) => p.key === "ping")?.latencyMs ?? null,
-    probes,
+    status: probe.status,
+    latencyMs: probe.latencyMs,
+    probes: probe.probes,
     prometheus,
     collectedAt: new Date(),
   };
+}
+
+export interface FleetMember {
+  server: LocoServer;
+  status: ServerStatus;
+  latencyMs: number | null;
+}
+
+/** Lightweight health-only probe of every server, for the Overview tile. */
+export async function probeAll(
+  servers: LocoServer[],
+  timeoutMs: number,
+): Promise<FleetMember[]> {
+  return Promise.all(
+    servers.map(async (server) => {
+      const { status, latencyMs } = await probeServer(server, timeoutMs);
+      return { server, status, latencyMs };
+    }),
+  );
 }
 
 /** Collect metrics for every server concurrently. Never rejects. */

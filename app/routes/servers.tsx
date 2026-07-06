@@ -129,6 +129,14 @@ export default function Servers({ loaderData }: Route.ComponentProps) {
         </Alert>
       ) : null}
 
+      {resolvers
+        .filter((r) => r.error)
+        .map((r) => (
+          <Alert key={r.kind} tone="warning" title={`${r.label} failed to resolve`}>
+            <span className="font-mono text-xs">{r.error}</span>
+          </Alert>
+        ))}
+
       {resolvers.length === 0 && !configError ? (
         <Card>
           <EmptyState
