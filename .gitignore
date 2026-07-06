@@ -20,3 +20,6 @@ target/
 *.sqlite-*
 # Local Postgres cluster used for development/verification
 .pgdata/
+
+# insta pending snapshots
+*.snap.new
