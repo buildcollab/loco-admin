@@ -1,0 +1,33 @@
+# Example Loco scheduler configuration.
+#
+# Point SCHEDULER_CONFIG_PATH at your real Loco scheduler.yaml. The admin app
+# also understands a full Loco config file that nests everything under a
+# top-level `scheduler:` key.
+#
+# Cron format is "sec min hour day-of-month month day-of-week [year]".
+# Loco also accepts English expressions (e.g. "every 15 minutes"), which the
+# admin app displays but cannot project into future run times.
+
+output: stdout
+
+jobs:
+  # Run a Loco task every five minutes.
+  refresh_reporting:
+    run: "reporting:refresh"
+    shell: false
+    schedule: "0 */5 * * * *"
+    tags: ["reporting"]
+
+  # Run a shell command nightly at 02:00.
+  cleanup_temp:
+    run: "rm -rf ./tmp/*"
+    shell: true
+    schedule: "0 0 2 * * *"
+    run_on_start: false
+    tags: ["maintenance"]
+
+  # Enqueue a digest worker once an hour.
+  send_digest:
+    run: "digest:send"
+    schedule: "0 0 * * * *"
+    tags: ["email", "digest"]
