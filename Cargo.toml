@@ -16,6 +16,10 @@ loco-rs = { git = "https://github.com/buildcollab/loco", rev = "2bdd18920d64d0f2
 loco-rs = { workspace = true  }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
+# loco-rs pulls jsonwebtoken without a crypto provider, so signing/verifying JWTs
+# panics at runtime. Enable the pure-Rust provider (feature-unified onto the
+# shared crate) so exactly one provider is active.
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 tokio = { version = "1.45", default-features = false, features = [
   "rt-multi-thread",
 ] }

@@ -7,6 +7,12 @@
   name: user1
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+  # Nullable timestamp columns are given explicit nulls: sea-orm 2.0-rc's
+  # from_json otherwise injects an unparseable "NULL"-string default for them.
+  reset_sent_at: null
+  email_verification_sent_at: null
+  email_verified_at: null
+  magic_link_expiration: null
 - id: 2
   pid: 22222222-2222-2222-2222-222222222222
   email: user2@example.com
@@ -15,3 +21,7 @@
   name: user2
   created_at: "2023-11-12T12:34:56.789Z"
   updated_at: "2023-11-12T12:34:56.789Z"
+  reset_sent_at: null
+  email_verification_sent_at: null
+  email_verified_at: null
+  magic_link_expiration: null
