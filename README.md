@@ -1,142 +1,77 @@
 # loco-admin
 
-An independent admin console for [Loco](https://loco.rs) (`loco-rs`) applications.
-It connects to the **same Postgres database** your Loco app uses and gives
-operators a UI over the parts of Loco that otherwise only have a CLI:
+An admin console for [Loco](https://loco.rs) (`loco-rs`) applications, built **as
+a Loco app itself** on the [buildcollab/loco](https://github.com/buildcollab/loco)
+fork. It connects to the **same Postgres database** a managed Loco app uses and
+talks to other Loco servers over HTTP to give operators three consoles:
 
-- **Background Jobs** — browse, filter, and manage the `pg_loco_queue` table
-  (requeue, cancel, run-now, delete, and bulk maintenance).
-- **Scheduler** — visualise the cron jobs defined in your Loco `scheduler.yaml`,
-  including human-readable descriptions and the next scheduled run times.
-- **Servers** — fetch health and metrics from a fleet of Loco servers. The
-  server list comes from a pluggable resolver (a static config list today).
-
-It is deliberately a separate app (not a Loco plugin) so it can be deployed and
-secured independently while pointing at the same data.
+- **Background Jobs** — browse, filter and manage the `pg_loco_queue` table
+  (requeue, run-now, cancel, delete, and bulk maintenance).
+- **Scheduler** — visualise the cron jobs in a Loco `scheduler.yaml`, with the
+  next projected run times and correlation to recent queue activity.
+- **Servers** — fetch health and metrics from a fleet of Loco servers, using the
+  fork's `/_server` (JSON manifest) and `/_metrics` (Prometheus) endpoints.
 
 ## Stack
 
-- [React Router v8](https://reactrouter.com) framework mode (SSR) + React 19
-- TypeScript, Vite 8
-- Tailwind CSS v4
-- [`postgres`](https://github.com/porsager/postgres) for direct SQL access
+- **Backend:** Rust + Loco (the `buildcollab/loco` fork), `sea-orm` for DB access,
+  `reqwest` for server probes. JSON APIs under `/api/*`.
+- **Frontend:** React 19 + React Router (SPA), built with rsbuild and served by
+  Loco as static assets.
 
-Server-side loaders/actions talk to Postgres; nothing DB-related ships to the
-browser.
+The backend is pinned to Rust 1.95 (`rust-toolchain.toml`) to match the fork's
+MSRV, and depends on the fork by git rev in `Cargo.toml`.
 
-## Getting started
+## Running
 
-```bash
-npm install
-cp .env.example .env      # then edit DATABASE_URL to match your Loco app
-npm run dev               # http://localhost:5173
+```sh
+# 1. Build the frontend (Loco serves frontend/dist)
+cd frontend && npm install && npm run build && cd ..
+
+# 2. Point at the target app's database and start
+DATABASE_URL=postgres://user:pass@host:5432/target_db \
+  cargo loco start
 ```
 
-### Configuration
+Open http://localhost:5150.
 
-All configuration is via environment variables (see `.env.example`):
+### Configuration (env)
 
-| Variable                | Required | Default            | Purpose                                            |
-| ----------------------- | -------- | ------------------ | -------------------------------------------------- |
-| `DATABASE_URL`          | yes      | —                  | Postgres connection string for the Loco app's DB   |
-| `QUEUE_TABLE`           | no       | `pg_loco_queue`    | Loco queue table name                              |
-| `SCHEDULER_CONFIG_PATH` | no       | `scheduler.yaml`   | Path to the Loco scheduler config                  |
-| `TARGET_LABEL`          | no       | —                  | Label shown in the UI for the target environment   |
+| Variable                | Purpose                                                        |
+| ----------------------- | ------------------------------------------------------------- |
+| `DATABASE_URL`          | Postgres of the managed Loco app (its `pg_loco_queue` table)  |
+| `QUEUE_TABLE`           | Queue table name (default `pg_loco_queue`)                    |
+| `SCHEDULER_CONFIG_PATH` | Path to the Loco `scheduler.yaml` (default `scheduler.yaml`)  |
+| `LOCO_SERVERS`          | Servers console: inline JSON list (see below)                 |
+| `LOCO_SERVERS_FILE`     | Servers console: path to a JSON/YAML list                     |
+| `METRICS_TIMEOUT_MS`    | Per-request timeout when probing servers (default 4000)       |
 
-## Background jobs
+`LOCO_SERVERS` example:
 
-The console reads the Loco Postgres queue table (`pg_loco_queue`), whose status
-column is one of `queued`, `processing`, `completed`, `failed`, `cancelled`.
-
-Available operations (all write directly to the queue table):
-
-- **Requeue** a failed/cancelled job (`status → queued`, `run_at → now`).
-- **Run now** — bump `run_at` to now so the next poll picks it up.
-- **Cancel** a queued/processing job.
-- **Delete** a job.
-- **Bulk actions** on a selection, plus **Maintenance** shortcuts: requeue all
-  failed, purge completed, purge cancelled.
-
-Filter by status, job name, tag, and free-text (id/name); sort and paginate.
-
-## Scheduler
-
-Loco's scheduler is configuration-driven — the schedule lives in a YAML file,
-not the database — so the console reads `SCHEDULER_CONFIG_PATH` and renders each
-job with its command, cron expression, a human-readable description, and the
-next few run times. Jobs that carry tags are cross-referenced against recent
-queue activity. English schedules (e.g. "every 15 minutes") are shown verbatim;
-Loco evaluates those at runtime so future runs aren't projected.
-
-See `scheduler.example.yaml` for the expected shape.
-
-## Servers
-
-The Servers page fetches health and metrics from other Loco servers. Which
-servers to talk to is decided by a **resolver** — the abstraction is pluggable
-so discovery can later come from Kubernetes, a service registry, etc. Today one
-resolver is implemented:
-
-- **StaticResolver** — a fixed list from configuration, via `LOCO_SERVERS`
-  (inline JSON) or `LOCO_SERVERS_FILE` (a JSON/YAML file, either a bare list or
-  `{ servers: [...] }`). Each entry has a `name`, a `baseUrl` (or `url`),
-  optional `tags`, and an optional `metricsPath`.
-- **KubernetesResolver** — discovers Loco pods via the Kubernetes API. Active
-  when `K8S_LABEL_SELECTOR` is set; it lists Running pods matching the selector
-  in a namespace and turns each pod IP into a server (`K8S_SCHEME://podIP:port`,
-  where the port is `K8S_PORT` or the pod's `containerPort`). In-cluster it uses
-  the mounted service-account token, CA and namespace by default; all of that is
-  overridable for out-of-cluster use (see `.env.example`).
-
-Resolvers compose: if both are configured their servers are merged. A resolver
-that fails at runtime (e.g. the Kubernetes API is unreachable) is isolated — its
-error is shown on the page and the other resolvers' servers still render.
-
-For every resolved server the collector probes Loco's built-in health endpoints
-— `/_ping`, `/_health`, `/_readiness` — recording status and latency, and
-derives an overall **up / degraded / down** state (degraded = live but a
-dependency check is failing). If a server sets `metricsPath`, the collector also
-scrapes that endpoint and parses the Prometheus text exposition format into
-browsable metric families. (Loco has no metrics endpoint out of the box, so
-`metricsPath` is opt-in.)
-
-```jsonc
-// LOCO_SERVERS
+```json
 [
-  { "name": "web-1", "baseUrl": "http://10.0.0.4:5150", "tags": ["prod"] },
-  { "name": "worker-1", "baseUrl": "http://10.0.0.5:5150", "metricsPath": "/metrics" }
+  { "name": "web-1", "base_url": "http://10.0.0.4:5150", "tags": ["prod"] },
+  { "name": "worker-1", "url": "http://10.0.0.5:5150", "metrics_path": "/_metrics" }
 ]
 ```
 
-Adding another resolver means implementing the `ServerResolver` interface
-(`app/lib/servers/types.ts`) and registering it in
-`app/lib/servers/registry.server.ts` — the metrics collector and UI need no
-changes. `KubernetesResolver` is a worked example of a dynamic resolver.
+## API
 
-The Overview page shows a **Fleet** tile summarising up / degraded / down across
-all resolved servers (health probes only, so it stays fast).
+The React frontend is a thin client over these JSON endpoints:
 
-## Local development against a throwaway database
+- `GET /api/jobs?status=&name=&tag=&q=&page=&page_size=&sort=&dir=` — job page
+- `GET /api/jobs/stats` · `GET /api/jobs/facets` · `GET /api/jobs/{id}`
+- `POST /api/jobs/actions` — `{ intent, ids?, status? }` (requeue / cancel /
+  run-now / delete / requeue-all-failed / purge-status)
+- `GET /api/scheduler` — parsed schedule + projected runs + recent activity
+- `GET /api/servers` — resolved servers with health, `/_server` and `/_metrics`
 
-`db/schema.sql` documents the queue table, and `scripts/seed.ts` populates a
-spread of sample jobs so you can work without a running Loco worker:
+## Servers console & the fork
 
-```bash
-export DATABASE_URL=postgres://localhost:5432/loco_admin_dev
-npm run db:schema     # create pg_loco_queue
-npm run db:seed       # insert ~48 sample jobs
-npm run dev
-```
-
-## Production build
-
-```bash
-npm run build
-npm run start         # serves ./build with @react-router/serve
-```
-
-## Notes
-
-Loco creates `pg_loco_queue` automatically when a worker using the Postgres
-queue backend first starts, so in a real deployment you point `DATABASE_URL` at
-the existing database and the table is already there.
+For each configured server the collector probes the built-in `/_ping`,
+`/_health` and `/_readiness` endpoints (status + latency → up / degraded / down),
+then fetches the fork's `/_server` manifest (name, version, environment, build
+info, route count) and scrapes `/_metrics` (parsed from the Prometheus text
+format, including the fork's `loco_build_info`, `loco_routes_total` and
+`loco_uptime_seconds`). Because loco-admin is itself built on the fork, it also
+exposes `/_server` and `/_metrics` and can monitor itself.
