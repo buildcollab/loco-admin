@@ -43,10 +43,7 @@ struct ActionResponse {
     message: String,
 }
 
-async fn action(
-    State(ctx): State<AppContext>,
-    Json(req): Json<ActionRequest>,
-) -> Result<Response> {
+async fn action(State(ctx): State<AppContext>, Json(req): Json<ActionRequest>) -> Result<Response> {
     let db = &ctx.db;
     let (affected, verb) = match req.intent.as_str() {
         "requeue" => (queue::requeue(db, &req.ids).await?, "Requeued"),

@@ -78,7 +78,10 @@ pub fn resolve() -> (Vec<Server>, Option<String>) {
     for r in list {
         let base = r.base_url.or(r.url).unwrap_or_default();
         if base.is_empty() {
-            return (Vec::new(), Some(format!("server \"{}\" is missing base_url", r.name)));
+            return (
+                Vec::new(),
+                Some(format!("server \"{}\" is missing base_url", r.name)),
+            );
         }
         let base_url = base.trim_end_matches('/').to_string();
         let mut id = slug(&r.name);
@@ -326,7 +329,10 @@ fn short_err(err: &reqwest::Error) -> String {
 }
 
 fn derive_status(probes: &[Probe]) -> String {
-    let ping_ok = probes.iter().find(|p| p.key == "ping").is_some_and(|p| p.ok);
+    let ping_ok = probes
+        .iter()
+        .find(|p| p.key == "ping")
+        .is_some_and(|p| p.ok);
     if !ping_ok {
         return "down".to_string();
     }
@@ -480,7 +486,7 @@ pub fn parse_prometheus(text: &str) -> (Vec<PromFamily>, usize) {
                 let mut it = h.splitn(2, ' ');
                 if let Some(name) = it.next() {
                     family_mut(&mut order, &mut families, name).help =
-                        it.next().map(|s| s.to_string());
+                        it.next().map(ToString::to_string);
                 }
             } else if let Some(t) = rest.strip_prefix("TYPE ") {
                 let mut it = t.splitn(2, ' ');
@@ -495,7 +501,9 @@ pub fn parse_prometheus(text: &str) -> (Vec<PromFamily>, usize) {
         // <name>[{labels}] <value> [timestamp]
         let (name, labels, rest) = if let Some(brace) = line.find('{') {
             let name = &line[..brace];
-            let Some(close) = line.rfind('}') else { continue };
+            let Some(close) = line.rfind('}') else {
+                continue;
+            };
             let labels = parse_labels(&line[brace + 1..close]);
             (name, labels, line[close + 1..].trim())
         } else if let Some(sp) = line.find(' ') {

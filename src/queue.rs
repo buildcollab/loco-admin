@@ -58,9 +58,9 @@ fn to_tags(value: Option<serde_json::Value>) -> Vec<String> {
     match value {
         Some(serde_json::Value::Array(items)) => items
             .into_iter()
-            .filter_map(|v| match v {
-                serde_json::Value::String(s) => Some(s),
-                other => Some(other.to_string()),
+            .map(|v| match v {
+                serde_json::Value::String(s) => s,
+                other => other.to_string(),
             })
             .collect(),
         _ => Vec::new(),
@@ -153,7 +153,11 @@ pub async fn list(db: &impl ConnectionTrait, f: &JobFilters) -> Result<JobPage> 
     let page_size = f.page_size.unwrap_or(25).clamp(10, 100);
     let offset = (page - 1) * page_size;
     let col = sort_column(&f.sort);
-    let dir = if f.dir.as_deref() == Some("asc") { "ASC" } else { "DESC" };
+    let dir = if f.dir.as_deref() == Some("asc") {
+        "ASC"
+    } else {
+        "DESC"
+    };
     let tbl = table();
 
     let (where_sql, mut values) = build_where(f);
@@ -171,9 +175,9 @@ pub async fn list(db: &impl ConnectionTrait, f: &JobFilters) -> Result<JobPage> 
         .unwrap_or(0);
 
     // Page of rows. LIMIT/OFFSET are appended as trailing params.
-    values.push((page_size as i64).into());
+    values.push(i64::try_from(page_size).unwrap_or(i64::MAX).into());
     let limit_idx = values.len();
-    values.push((offset as i64).into());
+    values.push(i64::try_from(offset).unwrap_or(i64::MAX).into());
     let offset_idx = values.len();
     let rows_sql = format!(
         "SELECT {SELECT_COLS} FROM {tbl} {where_sql} \
@@ -190,7 +194,7 @@ pub async fn list(db: &impl ConnectionTrait, f: &JobFilters) -> Result<JobPage> 
     .map(Job::from)
     .collect();
 
-    let page_count = ((total as u64).max(1) + page_size - 1) / page_size;
+    let page_count = u64::try_from(total).unwrap_or(0).max(1).div_ceil(page_size);
     Ok(JobPage {
         rows,
         total,
@@ -314,7 +318,9 @@ pub async fn recent_by_tags(
     // Postgres `?|` needs a text[]; pass the tag list as an array value.
     let arr = Value::Array(
         sea_orm::sea_query::ArrayType::String,
-        Some(Box::new(tags.iter().map(|t| Value::from(t.clone())).collect())),
+        Some(Box::new(
+            tags.iter().map(|t| Value::from(t.clone())).collect(),
+        )),
     );
     let rows = JobRaw::find_by_statement(Statement::from_sql_and_values(
         DbBackend::Postgres,
@@ -420,6 +426,8 @@ pub async fn delete_by_status(db: &impl ConnectionTrait, status: &str) -> Result
 fn ids_value(ids: &[String]) -> Value {
     Value::Array(
         sea_orm::sea_query::ArrayType::String,
-        Some(Box::new(ids.iter().map(|s| Value::from(s.clone())).collect())),
+        Some(Box::new(
+            ids.iter().map(|s| Value::from(s.clone())).collect(),
+        )),
     )
 }

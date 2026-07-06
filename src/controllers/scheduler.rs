@@ -16,11 +16,7 @@ async fn index(State(ctx): State<AppContext>) -> Result<Response> {
     let config = scheduler_config::load();
 
     // Best-effort correlation: recent queue rows sharing any scheduled job's tag.
-    let mut tags: Vec<String> = config
-        .jobs
-        .iter()
-        .flat_map(|j| j.tags.clone())
-        .collect();
+    let mut tags: Vec<String> = config.jobs.iter().flat_map(|j| j.tags.clone()).collect();
     tags.sort();
     tags.dedup();
     let recent = queue::recent_by_tags(&ctx.db, &tags, 50)

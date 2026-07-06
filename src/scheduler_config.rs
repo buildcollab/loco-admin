@@ -102,16 +102,13 @@ struct RawRoot {
 
 pub fn load() -> SchedulerConfig {
     let path = config_path();
-    let raw = match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(_) => {
-            return SchedulerConfig {
-                path,
-                exists: false,
-                error: None,
-                jobs: Vec::new(),
-            }
-        }
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return SchedulerConfig {
+            path,
+            exists: false,
+            error: None,
+            jobs: Vec::new(),
+        };
     };
 
     let root: RawRoot = match serde_yaml::from_str(&raw) {
