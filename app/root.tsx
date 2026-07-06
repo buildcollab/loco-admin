@@ -41,6 +41,7 @@ const NAV = [
   { to: "/", label: "Overview", end: true, icon: IconGauge },
   { to: "/jobs", label: "Background Jobs", end: false, icon: IconQueue },
   { to: "/scheduler", label: "Scheduler", end: false, icon: IconClock },
+  { to: "/servers", label: "Servers", end: false, icon: IconServer },
 ];
 
 export default function App() {
@@ -155,6 +156,14 @@ function IconClock() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
       <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+    </svg>
+  );
+}
+
+function IconServer() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 5h14v4H5zM5 15h14v4H5zM8 7h.01M8 17h.01" />
     </svg>
   );
 }

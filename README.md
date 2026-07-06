@@ -8,6 +8,8 @@ operators a UI over the parts of Loco that otherwise only have a CLI:
   (requeue, cancel, run-now, delete, and bulk maintenance).
 - **Scheduler** — visualise the cron jobs defined in your Loco `scheduler.yaml`,
   including human-readable descriptions and the next scheduled run times.
+- **Servers** — fetch health and metrics from a fleet of Loco servers. The
+  server list comes from a pluggable resolver (a static config list today).
 
 It is deliberately a separate app (not a Loco plugin) so it can be deployed and
 secured independently while pointing at the same data.
@@ -67,6 +69,39 @@ queue activity. English schedules (e.g. "every 15 minutes") are shown verbatim;
 Loco evaluates those at runtime so future runs aren't projected.
 
 See `scheduler.example.yaml` for the expected shape.
+
+## Servers
+
+The Servers page fetches health and metrics from other Loco servers. Which
+servers to talk to is decided by a **resolver** — the abstraction is pluggable
+so discovery can later come from Kubernetes, a service registry, etc. Today one
+resolver is implemented:
+
+- **StaticResolver** — a fixed list from configuration, via `LOCO_SERVERS`
+  (inline JSON) or `LOCO_SERVERS_FILE` (a JSON/YAML file, either a bare list or
+  `{ servers: [...] }`). Each entry has a `name`, a `baseUrl` (or `url`),
+  optional `tags`, and an optional `metricsPath`.
+
+For every resolved server the collector probes Loco's built-in health endpoints
+— `/_ping`, `/_health`, `/_readiness` — recording status and latency, and
+derives an overall **up / degraded / down** state (degraded = live but a
+dependency check is failing). If a server sets `metricsPath`, the collector also
+scrapes that endpoint and parses the Prometheus text exposition format into
+browsable metric families. (Loco has no metrics endpoint out of the box, so
+`metricsPath` is opt-in.)
+
+```jsonc
+// LOCO_SERVERS
+[
+  { "name": "web-1", "baseUrl": "http://10.0.0.4:5150", "tags": ["prod"] },
+  { "name": "worker-1", "baseUrl": "http://10.0.0.5:5150", "metricsPath": "/metrics" }
+]
+```
+
+Adding a new resolver later means implementing the `ServerResolver` interface
+(`app/lib/servers/types.ts`) and registering it in
+`app/lib/servers/registry.server.ts` — the metrics collector and UI need no
+changes.
 
 ## Local development against a throwaway database
 
