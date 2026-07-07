@@ -1,0 +1,17 @@
+# Example Loco scheduler config for the admin scheduler console.
+output: stdout
+jobs:
+  refresh_reporting:
+    run: "reporting:refresh"
+    shell: false
+    schedule: "0 */5 * * * *"
+    tags: ["reporting"]
+  cleanup_temp:
+    run: "rm -rf ./tmp/*"
+    shell: true
+    schedule: "0 0 2 * * *"
+    tags: ["maintenance"]
+  send_digest:
+    run: "digest:send"
+    schedule: "0 0 * * * *"
+    tags: ["email", "digest"]
